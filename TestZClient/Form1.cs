@@ -13,6 +13,8 @@ using static DigitalPlatform.Z3950.ZClient;
 using DigitalPlatform.Text;
 using DigitalPlatform.Z3950;
 using DigitalPlatform.Marc;
+using System.Web;
+using DigitalPlatform.MarcQuery;
 
 namespace TestZClient
 {
@@ -152,6 +154,8 @@ namespace TestZClient
             Settings.Default.Save();
         }
 
+        // 创建只包含一个检索词的简单 XML 检索式
+        // 注：这种 XML 检索式不是 Z39.50 函数库必需的。只是用它来方便构造 API 检索式的过程
         public string BuildQueryXml()
         {
             XmlDocument dom = new XmlDocument();
@@ -179,7 +183,7 @@ namespace TestZClient
 
         TargetInfo _targetInfo = new TargetInfo();
 
-        int _resultCount = 0;   // 检索命中条数
+        long _resultCount = 0;   // 检索命中条数
         int _fetched = 0;   // 已经 Present 获取的条数
 
         private async void button_search_Click(object sender, EventArgs e)
@@ -230,9 +234,10 @@ namespace TestZClient
 
                 if (this.radioButton_query_easy.Checked)
                 {
-                    // 构造 XML 检索式
+                    // 创建只包含一个检索词的简单 XML 检索式
+                    // 注：这种 XML 检索式不是 Z39.50 函数库必需的。只是用它来方便构造 API 检索式的过程
                     string strQueryXml = BuildQueryXml();
-                    // 将 XML 检索式变化为简明格式检索式
+                    // 将 XML 检索式变化为 API 检索式
                     Result result = ZClient.ConvertQueryString(
                         this._useList,
                         strQueryXml,
@@ -249,6 +254,7 @@ namespace TestZClient
                 else
                     strQueryString = this.textBox_queryString.Text;
 
+                REDO_SEARCH:
                 {
                     // return Value:
                     //      -1  出错
@@ -267,14 +273,27 @@ namespace TestZClient
                     */
                 }
 
+                // result.Value:
+                //		-1	error
+                //		0	fail
+                //		1	succeed
+                // result.ResultCount:
+                //      命中结果集内记录条数 (当 result.Value 为 1 时)
                 SearchResult search_result = await _zclient.Search(
         strQueryString,
         _targetInfo.DefaultQueryTermEncoding,
         _targetInfo.DbNames,
         _targetInfo.PreferredRecordSyntax,
         "default");
-                if (search_result.Value == -1)
+                if (search_result.Value == -1 || search_result.Value == 0)
+                {
                     this.AppendHtml("<div class='debug error' >检索出错 " + search_result.ErrorInfo + "</div>");
+                    if (search_result.ErrorCode == "ConnectionAborted")
+                    {
+                        this.AppendHtml("<div class='debug error' >自动重试检索 ...</div>");
+                        goto REDO_SEARCH;
+                    }
+                }
                 else
                     this.AppendHtml("<div class='debug green' >检索共命中记录 " + search_result.ResultCount + "</div>");
 
@@ -292,7 +311,7 @@ namespace TestZClient
                     this.button_nextBatch.Enabled = false;
 #endif
 
-                await FetchRecords();
+                await FetchRecords(_targetInfo);
 
                 return;
             }
@@ -301,6 +320,7 @@ namespace TestZClient
                 EnableControls(true);
             }
             ERROR1:
+            this.AppendHtml("<div class='debug error' >" + HttpUtility.HtmlEncode(strError) + "</div>");
             MessageBox.Show(this, strError);
         }
 
@@ -318,36 +338,53 @@ namespace TestZClient
                 this.button_nextBatch.Text = ">> ";
             else
                 this.button_nextBatch.Text = ">> " + _fetched + "/" + _resultCount;
+
+            this.textBox_database.Enabled = bEnable;
+            this.textBox_groupID.Enabled = bEnable;
+            this.textBox_password.Enabled = bEnable;
+            //this.textBox_queryString.Enabled = bEnable;
+            //this.textBox_queryWord.Enabled = bEnable;
+            this.textBox_serverAddr.Enabled = bEnable;
+            this.textBox_serverPort.Enabled = bEnable;
+            this.textBox_userName.Enabled = bEnable;
+
+            this.groupBox1.Enabled = bEnable;
+
+            SetQueryEnabled(bEnable);
         }
 
-        async Task FetchRecords()
+        async Task FetchRecords(TargetInfo targetinfo)
         {
             EnableControls(false);  // 暂时禁用
-
-            if (_resultCount - _fetched > 0)
+            try
             {
-                PresentResult present_result = await _zclient.Present(
-                    "default",
-                    _fetched,
-                    Math.Min(_resultCount - _fetched, 10),
-                    10,
-                    "F",
-                    _targetInfo.PreferredRecordSyntax);
-                if (present_result.Value == -1)
+                if (_resultCount - _fetched > 0)
                 {
-                    this.Invoke((Action)(() => MessageBox.Show(this, present_result.ToString())));
-                }
-                else
-                {
-                    // 把 MARC 记录显示出来
-                    AppendMarcRecords(present_result.Records,
-                        _zclient.ForcedRecordsEncoding,
-                        _fetched);
-                    _fetched += present_result.Records.Count;
+                    PresentResult present_result = await _zclient.Present(
+                        "default",
+                        _fetched,
+                        Math.Min((int)_resultCount - _fetched, 10),
+                        10,
+                        "F",
+                        targetinfo.PreferredRecordSyntax);
+                    if (present_result.Value == -1)
+                    {
+                        this.Invoke((Action)(() => MessageBox.Show(this, present_result.ToString())));
+                    }
+                    else
+                    {
+                        // 把 MARC 记录显示出来
+                        AppendMarcRecords(present_result.Records,
+                            _zclient.ForcedRecordsEncoding == null ? targetinfo.DefaultRecordsEncoding : _zclient.ForcedRecordsEncoding,
+                            _fetched);
+                        _fetched += present_result.Records.Count;
+                    }
                 }
             }
-
-            EnableControls(true);
+            finally
+            {
+                EnableControls(true);
+            }
 
 #if NO
             if (_resultCount - _fetched > 0)
@@ -379,13 +416,22 @@ namespace TestZClient
             {
                 this.AppendHtml("<div class='debug green' >" + (i + 1) + ") ===</div>");
 
+                if (string.IsNullOrEmpty(record.m_strDiagSetID) == false)
+                {
+                    // 这是诊断记录
+
+                    this.AppendHtml("<div>" + HttpUtility.HtmlEncode(record.ToString()).Replace("\r\n", "<br/>") + "</div>");
+                    i++;
+                    continue;
+                }
+
                 // 把byte[]类型的MARC记录转换为机内格式
                 // return:
                 //		-2	MARC格式错
                 //		-1	一般错误
                 //		0	正常
-                int nRet = MarcUtil.ConvertByteArrayToMarcRecord(record.m_baRecord,
-                    encoding,
+                int nRet = MarcLoader.ConvertIso2709ToMarcString(record.m_baRecord,
+                    encoding == null ? Encoding.GetEncoding(936) : encoding,
                     true,
                     out string strMARC,
                     out string strError);
@@ -519,7 +565,10 @@ System.Runtime.InteropServices.COMException (0x800700AA): 请求的资源在使�
         // 获得下一批记录
         private async void button_nextBatch_Click(object sender, EventArgs e)
         {
-            await FetchRecords();
+            if ((Control.ModifierKeys & Keys.Control) != 0)
+                await Present();
+            else
+                await FetchRecords(_targetInfo);
         }
 
         // 停止检索等操作
@@ -534,24 +583,40 @@ System.Runtime.InteropServices.COMException (0x800700AA): 请求的资源在使�
         // 多通道测试
         private void MenuItem_multiChannelTest_Click(object sender, EventArgs e)
         {
-
+            MultiChannelForm dlg = new MultiChannelForm();
+            dlg.StartPosition = FormStartPosition.CenterParent;
+            dlg.ShowDialog(this);
         }
 
         private void radioButton_query_origin_CheckedChanged(object sender, EventArgs e)
         {
-            if (this.radioButton_query_easy.Checked == true)
-            {
-                this.textBox_queryWord.Enabled = true;
-                this.comboBox_use.Enabled = true;
+            SetQueryEnabled(true);
+        }
 
-                this.textBox_queryString.Enabled = false;
+        void SetQueryEnabled(bool bEnable)
+        {
+            this.radioButton_query_easy.Enabled = bEnable;
+            this.radioButton_query_origin.Enabled = bEnable;
+            if (bEnable)
+            {
+                if (this.radioButton_query_easy.Checked == true)
+                {
+                    this.textBox_queryWord.Enabled = true;
+                    this.comboBox_use.Enabled = true;
+                    this.textBox_queryString.Enabled = false;
+                }
+                else
+                {
+                    this.textBox_queryWord.Enabled = false;
+                    this.comboBox_use.Enabled = false;
+                    this.textBox_queryString.Enabled = true;
+                }
             }
             else
             {
                 this.textBox_queryWord.Enabled = false;
                 this.comboBox_use.Enabled = false;
-
-                this.textBox_queryString.Enabled = true;
+                this.textBox_queryString.Enabled = false;
             }
         }
 
@@ -559,6 +624,108 @@ System.Runtime.InteropServices.COMException (0x800700AA): 请求的资源在使�
         {
             EscapeStringDialog dlg = new EscapeStringDialog();
             dlg.ShowDialog(this);
+        }
+
+        private async void MenuItem_iso2709LoaderTest_Click(object sender, EventArgs e)
+        {
+            this.MenuItem_iso2709LoaderTest.Enabled = false;
+            try
+            {
+                OpenFileDialog dlg = new OpenFileDialog();
+
+                dlg.Title = "请指定要装载的 ISO2709 文件名";
+                // dlg.FileName = this.textBox_filename.Text;
+                dlg.Filter = "ISO2709文件 (*.iso)|*.iso|All files (*.*)|*.*";
+                dlg.RestoreDirectory = true;
+
+                if (dlg.ShowDialog() != DialogResult.OK)
+                    return;
+
+                MarcLoader loader = new MarcLoader(dlg.FileName,
+                    Encoding.GetEncoding(936),
+                    "marc",
+                    (length, current) =>
+                    {
+                        this.Invoke(
+(Action)(() =>
+{
+    this.toolStripProgressBar1.Maximum = (int)length;
+    this.toolStripProgressBar1.Value = (int)current;
+})
+);
+                    }
+                    );
+
+                this.ClearHtml();
+                await Task.Run(() =>
+                {
+                    int i = 0;
+                    foreach (string strMARC in loader)
+                    {
+                        this.AppendHtml("<div class='debug green' >" + (i + 1) + ") ===</div>");
+
+                        // 获得 MARC 记录的 HTML 格式字符串
+                        string strHtml = MarcUtil.GetHtmlOfMarc(strMARC,
+                               null,
+                               null,
+                               false);
+
+                        this.AppendHtml(strHtml);
+                        i++;
+                    }
+                });
+            }
+            finally
+            {
+                this.MenuItem_iso2709LoaderTest.Enabled = true;
+            }
+        }
+
+        string _uiState;
+
+        async Task Present()
+        {
+            PresentDialog dlg = new PresentDialog();
+            dlg.UiState = _uiState;
+            dlg.ShowDialog(this);
+            _uiState = dlg.UiState;
+            if (dlg.DialogResult == DialogResult.Cancel)
+                return;
+
+            int nStart = Convert.ToInt32(dlg.PresentStart);
+            int nCount = Convert.ToInt32(dlg.PresentCount);
+            EnableControls(false);  // 暂时禁用
+            try
+            {
+                PresentResult present_result = await _zclient.Present(
+                    dlg.ResultSetName,
+                    nStart,
+                    nCount,
+                    10,
+                    "F",
+                    _targetInfo.PreferredRecordSyntax);
+                if (present_result.Value == -1)
+                {
+                    this.Invoke((Action)(() => MessageBox.Show(this, present_result.ToString())));
+                }
+                else
+                {
+                    // 把 MARC 记录显示出来
+                    AppendMarcRecords(present_result.Records,
+                        _zclient.ForcedRecordsEncoding == null ? _targetInfo.DefaultRecordsEncoding : _zclient.ForcedRecordsEncoding,
+                        _fetched);
+                    _fetched += present_result.Records.Count;
+                }
+            }
+            finally
+            {
+                EnableControls(true);
+            }
+        }
+
+        private async void MenuItem_singlePresent_Click(object sender, EventArgs e)
+        {
+            await Present();
         }
     }
 }

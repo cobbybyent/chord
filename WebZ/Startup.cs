@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using DigitalPlatform.IO;
 using Microsoft.AspNetCore.Builder;
@@ -18,6 +19,10 @@ namespace WebZ
         public Startup(IConfiguration configuration)
         {
             Configuration = configuration;
+
+            // 2016.10.25 再次启用session 用于出纳窗命令
+            //this.PostAuthenticateRequest += (sender, e) => HttpContext.Current.SetSessionStateBehavior(SessionStateBehavior.Required);
+
         }
 
 
@@ -25,7 +30,18 @@ namespace WebZ
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
+
+
             services.AddMvc();
+
+            services.AddDistributedMemoryCache();
+
+            services.AddSession(options =>
+            {
+                // Set a short timeout for easy testing.
+                options.IdleTimeout = TimeSpan.FromSeconds(20);
+                options.Cookie.HttpOnly = true;
+            });
 
             //// 增加的配置
             //services.Configure<ApplicationConfiguration>(Configuration.GetSection("ApplicationConfiguration"));
@@ -45,7 +61,7 @@ namespace WebZ
             }
 
             app.UseStaticFiles();
-
+            app.UseSession();
             app.UseMvc(routes =>
             {
                 routes.MapRoute(
@@ -64,7 +80,9 @@ namespace WebZ
 
 
             // 初始化
-            ServerInfo.Initial(datadir);
+            ServerInfo.Instance.Initial(datadir);
+
+            //Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
         }
 

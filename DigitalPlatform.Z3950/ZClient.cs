@@ -19,6 +19,7 @@ namespace DigitalPlatform.Z3950
 
         string _currentRefID = "0";
 
+        // 经过字符集协商确定的记录强制使用的编码方式。如果为 null，表示未经过字符集协商
         public Encoding ForcedRecordsEncoding = null;
 
         public event EventHandler Closed = null;
@@ -64,14 +65,20 @@ namespace DigitalPlatform.Z3950
         //      -1  出错
         //      0   成功
         //      1   调用前已经是初始化过的状态，本次没有进行初始化
-        public async Task<InitialResult> TryInitialize(TargetInfo targetinfo)
+        public async Task<InitialResult> TryInitialize(TargetInfo targetinfo,
+            bool bTry = true)
         {
             {
                 // 处理通讯缓冲区中可能残留的 Close Response
+                // return value:
+                //      -1  error
+                //      0   不是Close
+                //      1   是Close，已经迫使ZChannel处于尚未初始化状态
                 InitialResult result = await CheckServerCloseRequest();
             }
 
-            if (this._channel.Connected == false
+            if (bTry == false
+                || this._channel.Connected == false
                 || this._channel.Initialized == false
     || this._channel.HostName != targetinfo.HostName
     || this._channel.Port != targetinfo.Port)
@@ -84,6 +91,10 @@ namespace DigitalPlatform.Z3950
                 }
 
                 // this.Stop.SetMessage("正在执行Z39.50初始化 ...");
+
+                // 2018/7/4
+                if (bTry == false)
+                    this._channel.Initialized = false;
 
                 {
                     // return Value:
@@ -107,6 +118,16 @@ namespace DigitalPlatform.Z3950
         {
             // 说明初始化结果的文字
             public string ResultInfo { get; set; }
+
+            public InitialResult()
+            {
+
+            }
+
+            public InitialResult(Result source)
+            {
+                Result.CopyTo(source, this);
+            }
 
             public override string ToString()
             {
@@ -177,7 +198,10 @@ namespace DigitalPlatform.Z3950
                 return new InitialResult { Value = -1, ErrorInfo = "CBERTree::InitRequest() fail!" };
 
             if (this._channel.Connected == false)
+            {
+                this.CloseConnection();
                 return new InitialResult { Value = -1, ErrorInfo = "socket尚未连接或者已经被关闭" };
+            }
 
 
 
@@ -194,7 +218,7 @@ namespace DigitalPlatform.Z3950
             RecvResult result = await this._channel.SendAndRecv(
                 baPackage);
             if (result.Value == -1)
-                return new InitialResult { Value = -1, ErrorInfo = result.ErrorInfo };
+                return new InitialResult(result);
 
 #if DUMPTOFILE
 	DeleteFile("initresponse.bin");
@@ -343,7 +367,17 @@ namespace DigitalPlatform.Z3950
 
         public class SearchResult : Result
         {
-            public int ResultCount { get; set; }
+            public long ResultCount { get; set; }
+
+            public SearchResult()
+            {
+
+            }
+
+            public SearchResult(Result source)
+            {
+                Result.CopyTo(source, this);
+            }
 
             public override string ToString()
             {
@@ -409,7 +443,10 @@ namespace DigitalPlatform.Z3950
             }
 
             if (this._channel.Connected == false)
+            {
+                this.CloseConnection();
                 return new SearchResult { Value = -1, ErrorInfo = "socket尚未连接或者已经被关闭" };
+            }
 
 #if DUMPTOFILE
             string strBinFile = this.MainForm.DataDir + "\\searchrequest.bin";
@@ -435,7 +472,7 @@ namespace DigitalPlatform.Z3950
                 RecvResult result = await this._channel.SendAndRecv(
         baPackage);
                 if (result.Value == -1)
-                    return new SearchResult { Value = -1, ErrorInfo = result.ErrorInfo };
+                    return new SearchResult(result);
 
 #if NO
 #if DEBUG
@@ -487,7 +524,8 @@ namespace DigitalPlatform.Z3950
             }
         }
 
-        // 将 XML 检索式变化为简明格式检索式
+        // 将 XML 检索式变化为 Search() API 所用的检索式
+        // 注： 这是一个辅助性方法，基本 Z39.50 功能可以不包含它。API 所用的检索式可以不必从 XML 检索式转换而来
         // parameters:
         //      strQueryXml XML 形态的检索式
         //      strQueryString [out] Search() 专用的检索式
@@ -524,10 +562,10 @@ namespace DigitalPlatform.Z3950
                 string strWord = node.GetAttribute("word");
                 string strFrom = node.GetAttribute("from");
 
-                if (strWord == "")
-                    continue;
+                if (string.IsNullOrEmpty(strWord) == true)
+                    continue;   // 检索词为空的行会被跳过。
 
-                strLogic = GetLogicString(strLogic);    // 2011/8/30
+                strLogic = GetLogicString(strLogic);
 
                 if (strQueryString != "")
                     strQueryString += " " + strLogic + " ";
@@ -596,6 +634,16 @@ namespace DigitalPlatform.Z3950
         {
             public RecordCollection Records { get; set; }
 
+            public PresentResult()
+            {
+
+            }
+
+            public PresentResult(Result source)
+            {
+                Result.CopyTo(source, this);
+            }
+
             public override string ToString()
             {
                 StringBuilder text = new StringBuilder(base.ToString());
@@ -608,7 +656,8 @@ namespace DigitalPlatform.Z3950
         // 获得记录
         // 确保一定可以获得nCount个
         // parameters:
-        //          nPreferedEachCount  推荐的每次条数。这涉及到响应的敏捷性。如果为-1或者0，表示最大
+        //		nStart	获取记录的开始位置(从0开始计数)
+        //      nPreferedEachCount  推荐的每次条数。这涉及到响应的敏捷性。如果为-1或者0，表示最大
         public async Task<PresentResult> Present(
             string strResultSetName,
             int nStart,
@@ -662,7 +711,7 @@ namespace DigitalPlatform.Z3950
         // 本函数每次调用前，最好调用一次 TryInitialize()
         // 不确保一定可以获得nCount个
         // parameters:
-        //		nStart	开始记录(从0计算)
+        //		nStart	获取记录的开始位置(从0开始计数)
         public async Task<PresentResult> OncePresent(
             string strResultSetName,
             int nStart,
@@ -690,7 +739,10 @@ namespace DigitalPlatform.Z3950
             if (nRet == -1)
                 return new PresentResult { Value = -1, ErrorInfo = "CBERTree::PresentRequest() fail!" };
             if (this._channel.Connected == false)
+            {
+                this.CloseConnection();
                 return new PresentResult { Value = -1, ErrorInfo = "socket尚未连接或者已经被关闭" };
+            }
 
 #if DUMPTOFILE
 	DeleteFile("presentrequest.bin");
@@ -707,7 +759,7 @@ namespace DigitalPlatform.Z3950
                 RecvResult result = await this._channel.SendAndRecv(
         baPackage);
                 if (result.Value == -1)
-                    return new PresentResult { Value = -1, ErrorInfo = result.ErrorInfo };
+                    return new PresentResult(result);
 
 #if DUMPTOFILE
 	DeleteFile("presendresponse.bin");
@@ -774,9 +826,13 @@ namespace DigitalPlatform.Z3950
             if (this._channel.Connected == false || this._channel.DataAvailable == false)
                 return new InitialResult(); // 没有发现问题
 
-            RecvResult result = await this._channel.SimpleRecvTcpPackage();
+            // 注意调用返回后如果发现出错，调主要主动 Close 和重新分配 TcpClient
+            RecvResult result = await ZChannel.SimpleRecvTcpPackage(this._channel._client);
             if (result.Value == -1)
+            {
+                this.CloseConnection();
                 return new InitialResult { Value = -1, ErrorInfo = result.ErrorInfo };
+            }
 
             BerTree tree1 = new BerTree();
             tree1.m_RootNode.BuildPartTree(result.Package,
@@ -796,7 +852,10 @@ namespace DigitalPlatform.Z3950
                 ref closeStruct,
                 out string strError);
             if (nRet == -1)
+            {
+                this.CloseConnection();
                 return new InitialResult { Value = -1, ErrorInfo = strError };
+            }
 
             this.CloseConnection();
             return new InitialResult { Value = 1, ResultInfo = closeStruct.m_strDiagnosticInformation };

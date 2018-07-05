@@ -9,7 +9,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>dp2Capo.Install</RootNamespace>
     <AssemblyName>dp2Capo.Install</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
   </PropertyGroup>
@@ -40,6 +40,7 @@
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.Runtime.Remoting" />
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml.Linq" />
@@ -67,11 +68,23 @@
     <Compile Include="dp2MServerDialog.Designer.cs">
       <DependentUpon>dp2MServerDialog.cs</DependentUpon>
     </Compile>
+    <Compile Include="GlobalConfigDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GlobalConfigDialog.Designer.cs">
+      <DependentUpon>GlobalConfigDialog.cs</DependentUpon>
+    </Compile>
     <Compile Include="InstallDialog.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="InstallDialog.Designer.cs">
       <DependentUpon>InstallDialog.cs</DependentUpon>
+    </Compile>
+    <Compile Include="InstallZServerDlg.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="InstallZServerDlg.designer.cs">
+      <DependentUpon>InstallZServerDlg.cs</DependentUpon>
     </Compile>
     <Compile Include="InstanceDialog.cs">
       <SubType>Form</SubType>
@@ -97,8 +110,14 @@
     <EmbeddedResource Include="dp2MServerDialog.resx">
       <DependentUpon>dp2MServerDialog.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="GlobalConfigDialog.resx">
+      <DependentUpon>GlobalConfigDialog.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="InstallDialog.resx">
       <DependentUpon>InstallDialog.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="InstallZServerDlg.resx">
+      <DependentUpon>InstallZServerDlg.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="InstanceDialog.resx">
       <DependentUpon>InstanceDialog.cs</DependentUpon>
@@ -108,9 +127,9 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\DigitalPlatform.Common\DigitalPlatform.Common.csproj">
+    <ProjectReference Include="..\DigitalPlatform.Base\DigitalPlatform.Base.csproj">
       <Project>{56eb94fd-45d0-4c82-ae8e-d398f1c4efcf}</Project>
-      <Name>DigitalPlatform.Common</Name>
+      <Name>DigitalPlatform.Base</Name>
     </ProjectReference>
     <ProjectReference Include="..\DigitalPlatform.Drawing\DigitalPlatform.Drawing.csproj">
       <Project>{7c1cdeeb-c44d-458c-96bb-0486a59397de}</Project>
@@ -119,6 +138,10 @@
     <ProjectReference Include="..\DigitalPlatform.Forms\DigitalPlatform.Forms.csproj">
       <Project>{2dd0618d-c554-46d0-91a2-353f2f8ea2f2}</Project>
       <Name>DigitalPlatform.Forms</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\DigitalPlatform.Interfaces\DigitalPlatform.Interfaces.csproj">
+      <Project>{3C4F8133-8652-40B6-B37B-200B25C2B043}</Project>
+      <Name>DigitalPlatform.Interfaces</Name>
     </ProjectReference>
     <ProjectReference Include="..\DigitalPlatform.IO\DigitalPlatform.IO.csproj">
       <Project>{441cb814-af78-4503-91ef-dce5f3269502}</Project>

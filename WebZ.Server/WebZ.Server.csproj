@@ -6,11 +6,15 @@
 
   <ItemGroup>
     <PackageReference Include="MongoDB.Driver" Version="2.6.1" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="4.5.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\DigitalPlatform.Common\DigitalPlatform.Common.csproj" />
+    <ProjectReference Include="..\DigitalPlatform.Base\DigitalPlatform.Base.csproj" />
+    <ProjectReference Include="..\DigitalPlatform.Interfaces\DigitalPlatform.Interfaces.csproj" />
     <ProjectReference Include="..\DigitalPlatform.IO\DigitalPlatform.IO.csproj" />
+    <ProjectReference Include="..\DigitalPlatform.Xml\DigitalPlatform.Xml.csproj" />
+    <ProjectReference Include="..\DongshifangMessageInterface\DongshifangMessageInterface.csproj" />
   </ItemGroup>
 
 </Project>

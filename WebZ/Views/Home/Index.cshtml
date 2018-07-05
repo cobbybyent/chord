@@ -1,34 +1,84 @@
-﻿<h2>Z39.50服务器站点管理</h2>
+﻿
 
 @section style {
 
-    <link rel="stylesheet" href="~/css/message.css?a=3"  />
 }
 
 @section Scripts {
     <script>
 
-
         //$(document).ready调用是jQuery推迟函数执行的一项标准技术，
         //它直到浏览器加载并处理了文档的所有HTML元素之后才会执行。
         $(document).ready(function () {
-
-            //alert("ready");
-
+            //$('.ui.accordion').accordion({ duration: 'click' });
             // 获取所有的操作命令
-            getAllZSerItem();
+            //getAllZSerItem();
 
+            // 打回车检索
+            $('#_word').bind('keypress', function (event) {
+                //alert("enter");
+                if (event.keyCode == "13") {
+                    search();
+                }
+            });
         })
 
+        // 展开收缩
+        function expandToggle(obj) {
+
+            // 找到当前传入对象的下级_advanceCtrl
+            var advanceCtrl = $(obj).find("#_advanceCtrl");
+
+            // 找到当前传入对象并列的_advance
+            var advance = $(obj).parent().find("#_advance");
+
+            // 当前符号
+            var ctrl = advanceCtrl.html();
+            if (ctrl == "+") {
+                //alert("需要展开");
+                advanceCtrl.text("-")
+                $(advance).css("display", "inline-block");
+            }
+            else if (ctrl == "-") {
+                //alert("需要收缩");
+                advanceCtrl.html("+")
+                $(advance).css("display", "none");
+            }
+        }
+
+        // 每页显示条数
+        var _percount = 6;
+
         //获取所有站点
-        function getAllZSerItem() {
+        function search(bNew) {
+
+            var table = $("#_subject_main");
+
+            // 如果是重新发起的检索，清空结果列表，并且置超点为0
+            if (bNew == true) {
+
+                table.empty();
+                $("#_start").text(0);
+            }
+
+            var from = $("#_from").val();
+            var word = $("#_word").val();
+
+
+            var start = $("#_start").text();
+            if (start == null || start == "")
+                start = 0;
+
+            //alert(start);
+
             //显示等待图层
             showLoading();
-
-            //alert("getAllZSerItem");
-
-            // 调web api，获取全部，todo可以改为分批获取
-            var url = "/api/ZSerItem?start=0&count=-1";
+            // 调web api
+            var url = "/api/ZSerItem?word=" + encodeURIComponent(word)
+                + "&from=" + encodeURIComponent(from)
+                + "&start=" + start
+                + "&count=" + _percount;
+            //alert(url);
             sendAjaxRequest(url, "GET", function (result) {
 
                 if (result.errorCode == -1) {
@@ -36,10 +86,18 @@
                     return;
                 }
 
+                if (result.data.length == 0) {
+                    alert("未命中");
+                    return;
+                }
+
                 //alert("ok");
 
-                var table = $("#_subject_main");//ulResult");//$('.mui-table-view');
+                //ulResult");//$('.mui-table-view');
                 var noWidth = '18px';
+
+                //设为下次的起始值
+                $("#_start").text(Number(start) + Number(result.data.length));
 
                 //alert("2");
                 for (var i = 0; i < result.data.length; i++) {
@@ -56,8 +114,8 @@
                     if (i >= 99)
                         noWidth = "25px";
 
-                    var itemHtml =getMsgViewHtml(item, true);
-                    
+                    var itemHtml = getMsgViewHtml(item, true);
+
                     table.append(itemHtml);
                 }
 
@@ -81,19 +139,15 @@
                 return;
             }
 
-            //// 工作人员账号
-            //var userName = $("#_userName").text();
-            //if (userName == "") {
-            //    return;
-            //}
 
             var divId = "#_edit_" + msgId; // div的id命令规则为_edit_msgId
             var editBtn = $(divId).find("#btnEdit");
-            //alert(editBtn);
+            // alert(editBtn);
 
             // 这时候已经不是在浏览界面，应该是编辑态了
             var viewTable = $(divId).children(".view").html();
             if (viewTable == null || viewTable == "") {
+                //alert("无");
                 return;
             }
 
@@ -103,57 +157,183 @@
                 $(divId).removeClass(editStateClass);
 
                 $(editBtn).css("display", "none");
+                //alert("1");
             }
             else {
                 $(divId).addClass(editStateClass);
 
                 $(editBtn).css("display", "inline-block");
+                //alert("2");
             }
 
             // alert("clickMsgDiv");
         }
 
-        function getMsgViewHtml(msgItem, bContainEditDiv) {
+        function getCheckedStr(value) { 
+            var text = "";
+            if (value == 1)
+                text = " checked ";
 
-            //alert("id=" + msgItem.id + ",hostname=" + msgItem.hostName);
+            return text;
+        }
+
+        function getMsgViewHtml(item, bContainEditDiv) {
+
+            //alert("id=" + item.id + ",hostname=" + item.hostName);
 
             var bShowTime = true;
 
             var html = "";
             //alert("aa");
 
+            var authmethod_str = "";
+            if (item.authmethod == 0) {
+                authmethod_str = " Open ";
+            }
+            else {
+                authmethod_str = "ID/Pass";
+            }
+
+
             if (bContainEditDiv == true)
-                html += "<div class='mui-card message' id='_edit_" + msgItem.id + "' onclick=\"clickMsgDiv('" + msgItem.id + "')\">";
+                html += "<div class='message' id='_edit_" + item.id + "' onclick=\"clickMsgDiv('" + item.id + "')\">";
 
             // 2016-8-20 如果markdown格式产生的pre/code元素放在表格里不支持，这里给显示态再套一层div，把内容和注释提到table外的div里
-            html += "<div class='view'>"
+            html += "<div class='view'>";
+
             html += "<table class='view-top'>"
                 + "<tr>"
-                + "<td class='title' >" + msgItem.hostName + "</td>"
+                + "<td class='title' >" + item.name + "</td>"
                 + "<td class='btn'>"
                 + "<div id='btnEdit' style='display: none;'>"
-                + "<button class='mui-btn mui-btn-default' onclick=\"gotoEdit('" + msgItem.id + "')\">编辑</button>&nbsp;"
-                + "<button class='mui-btn mui-btn-danger' onclick=\"deleteMsg('" + msgItem.id + "')\">X&nbsp;删除</button>"
+                + "<button class='ui button' onclick=\"gotoEdit('" + item.id + "')\">编辑</button>&nbsp;"
+                + "<button class='ui button' onclick=\"deleteMsg('" + item.id + "')\">X&nbsp;删除</button>"
                 + "</div>"
                 + "</td>"
                 + "</tr>"
-
-            html += "</table>";
+                + "</table>";
 
             // 加内容
             html += "<div class='content'>"
-                + "<div><span class='name'>服务器地址：</span><span class='value'>" + msgItem.hostName + "</span></div>"
-                + "<div><span class='name'>端口号：</span><span class='value'>" + msgItem.port + "</span></div>"
-                + "<div><span class='name'>数据库名：</span><span class='value'>" + msgItem.dbNames + "</span></div>"
-                + "<div><span class='name'>权限验证方式：</span><span class='value'>" + msgItem.authenticationMethod + "</span></div>"
+                + "<div><span class='name'>id：</span><span class='value'>" + item.id + "</span></div>"
+                + "<div><span class='name'>服务器地址：</span><span class='value'>" + item.addr + "</span></div>"
+                + "<div><span class='name'>端口号：</span><span class='value'>" + item.port + "</span></div>"
+                + "<div><span class='name'>数据库名：</span><span class='value'>" + item.dbnames + "</span></div>"
+                + "<div><span class='name'>主页：</span><span class='value'>" + item.homepage + "</span></div>";
 
-                + "<div><span class='name'>创建者手机号：</span><span class='value'>" + msgItem.creatorPhone + "</span></div>"
-                + "<div><span class='name'>创建者IP：</span><span class='value'>" + msgItem.creatorIP + "</span></div>"
-
-                + "<div><span class='name'>创建时间：</span><span class='value'>" + msgItem.createTime + "</span></div>"
-                + "<div><span class='name'>状态：</span><span class='value'>" + msgItem.state + "</span></div>"
-
+            html += "<div><span class='name'>权限验证方式：</span><span class='value'>" + authmethod_str+ "</span></div>"
+                + "<div><span class='name'>创建者手机号：</span><span class='value'>" + item.creatorPhone + "</span></div>"
+                + "<div><span class='name'>创建者IP：</span><span class='value'>" + item.creatorIP + "</span></div>"
+                + "<div><span class='name'>创建时间：</span><span class='value'>" + item.createTime + "</span></div>"
+                + "<div><span class='name'>状态：</span><span class='value'>" + item.state + "</span></div>"
                 + "</div>";
+
+
+            var firstfullCkdStr = getCheckedStr(item.firstfull);
+            var detectmarcsyntaxStr = getCheckedStr(item.detectmarcsyntax);
+            var ignorereferenceidStr = getCheckedStr(item.ignorereferenceid);
+
+            //var firstfullCkdStr = "";
+            //if (item.firstfull == 1)
+            //    firstfullCkdStr = " checked ";
+
+            //var detectmarcsyntaxStr = "";
+            //if (item.detectmarcsyntax == 1)
+            //    detectmarcsyntaxStr = " checked ";
+
+            //var ignorereferenceidStr = "";
+            //if (item.ignorereferenceid == 1) 
+            //    ignorereferenceidStr = " checked ";
+
+
+            var isbn_force13Str = getCheckedStr(item.isbn_force13);
+            var isbn_force10Str = getCheckedStr(item.isbn_force10);
+            var isbn_addhyphenStr = getCheckedStr(item.isbn_addhyphen);
+            var isbn_removehyphenStr = getCheckedStr(item.isbn_removehyphen);
+            var isbn_wildStr = getCheckedStr(item.isbn_wild);
+
+            //
+            var charNegoUtf8Str = getCheckedStr(item.charNegoUtf8);
+           var charNego_recordsInSeletedCharsetsStr = getCheckedStr(item.charNego_recordsInSeletedCharsets);
+
+            html += "<div onclick='expandToggle(this)'><span id='_advanceCtrl'>+</span> 高级选项<br/></div> \
+              <div id='_advance' style='display:none'>\
+                <div class='content'>\
+                    <div class='ui segment'>\
+                        <div class=''>\
+                            <span class='nameAuto'>获取记录每批条数：</span>\
+                            <span class='value'>"+ item.recsperbatch+"</span>\
+                        </div>\
+                        <div class=''>\
+                            <span class='nameAuto'>缺省数据格式OID：</span>\
+                            <span class='value'>"+ item.defaultMarcSyntaxOID +"</span>\
+                        </div>\
+                        <div class=''>\
+                            <span class='nameAuto'>缺省元素集名：</span>\
+                            <span class='value'>"+ item.defaultElementSetName +"</span>\
+                        </div>\
+                        <div class=''>\
+                        <div class='ui toggle checkbox field'>\
+                            <input type='checkbox' disabled "+ firstfullCkdStr+">\
+                            <label>在获取浏览记录阶段即获取全记录</label>\
+                        </div>\
+                <br />\
+                        <br />\
+                        <div class='ui toggle checkbox field'>\
+                            <input type='checkbox' disabled "+ detectmarcsyntaxStr +">\
+                            <label>自动探测MARC记录格式</label>\
+                        </div>\
+                        <br />\
+                        <br />\
+                        <div class='ui toggle checkbox field'>\
+                            <input type='checkbox' disabled "+ ignorereferenceidStr +">\
+                            <label>不检查Reference</label>\
+                        </div>\
+                    </div>\
+                    <div class='ui segment'>\
+                        <p>ISBN检索前，对检索词作如下预处理：</p>\
+                        <div class='ui  checkbox field'>\
+                            <input type='checkbox' disabled "+ isbn_force13Str+">\
+                            <label>规整为13位形态&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                        </div>\
+                        <div class='ui  checkbox field'>\
+                            <input type='checkbox' disabled "+ isbn_force10Str+">\
+                            <label>规整为10位形态&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                        </div>\
+                        <div class='ui  checkbox field'>\
+                            <input type='checkbox' disabled "+ isbn_addhyphenStr+">\
+                            <label>加入横杠&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                        </div>\
+                        <div class='ui  checkbox field'>\
+                            <input type='checkbox' disabled "+ isbn_removehyphenStr+">\
+                            <label>去除横杠&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                        </div>\
+                        <div class='ui  checkbox field'>\
+                            <input type='checkbox' disabled "+ isbn_wildStr+">\
+                            <label>野蛮匹配&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                        </div>\
+                    </div>\
+                    <div class='ui segment'>\
+                        <div class=''>\
+                            <span class='nameAuto'>检索词缺省编码方式</span>\
+                            <span class='value'>"+ item.queryTermEncoding +"</span>\
+                        </div>\
+                        <div class=''>\
+                            <span class='nameAuto'>数据记录缺省编码方式</span>\
+                            <span class='value'>"+ item.defaultEncoding +"</span>\
+                        </div>\
+                        <div class='ui toggle  checkbox field'>\
+                            <input type='checkbox' disabled "+ charNegoUtf8Str +">\
+                            <label>启用字符集协商功能，优先为检索词选用UTF-8编码方式</label>\
+                        </div>\
+                        <br />\
+                        <br/>\
+                        <div class='ui toggle checkbox field'>\
+                            <input type='checkbox' disabled "+ charNego_recordsInSeletedCharsetsStr +">\
+                            <label>若启用了字符集协商功能，令数据记录也一同采用UTF-8编码试</label>\
+                        </div>\
+                    </div>\
+                </div>";
 
             // 收尾的div
             html += "</div>";
@@ -164,6 +344,25 @@
             return html;
         }
 
+        // 获取
+        function getCheckboxValue(name) {
+            var count = 0;
+            $("#"+name+":checked").each(function () {
+                count = 1;
+            });
+            return count
+        }
+
+
+        function checkPhone(phone) {
+            if (!(/^1[34578]\d{9}$/.test(phone))) {
+
+                return false;
+            }
+            return true;
+        }
+
+
         // 保存
         function save(msgId) {
 
@@ -173,32 +372,86 @@
             }
             var divId = "#_edit_" + msgId; // div的id命令规则为_edit_msgId
 
-            var hostName = $(divId).find("#_hostName").val();//$("#_val_title").val();
-            if (hostName == "") {
+            var name = $(divId).find("#_name").val();
+            if (name == "") {
+                alert("请输入服务器名称。");
+                return;
+            }
+
+            var addr = $(divId).find("#_addr").val();
+            if (addr == "") {
                 alert("请输入服务器地址。");
                 return;
             }
-            //alert("hostName=" + hostName);
 
-            var port = $(divId).find("#_port").val();//$("#_val_content").val();
+            var port = $(divId).find("#_port").val();
             if (port == "") {
                 alert("请输入端口号。");
                 return;
             }
-            //alert("port=" + port);
+            var homepage = $(divId).find("#_homepage").val();
 
-            var dbNames = $(divId).find("#_dbNames").val();
-            if (dbNames == "") {
+            var dbnames = $(divId).find("#_dbnames").val();
+            if (dbnames == "") {
                 alert("请输入数据库。");
                 return;
             }
 
-            var authenticationMethod = $(divId).find("#_authenticationMethod").val();
-            if (authenticationMethod == "") {
+
+
+            var authmethod = $("input[name='_authmethod']:checked").val();
+            if (authmethod == "") {
                 alert("请选择权限验证方式。");
                 return;
             }
-            //alert(authenticationMethod);
+            //alert("save authmethod="+authmethod);
+
+            var groupid = $(divId).find("#_groupid").val();
+            var username = $(divId).find("#_username").val();
+            var password = $(divId).find("#_password").val();
+
+            // 其它配置字段
+            var recsperbatch =parseInt($(divId).find("#_recsperbatch").val());
+            //alert(recsperbatch);
+
+            if (isNaN(recsperbatch)==true) { 
+
+                alert("获取记录每批条数 的配置值应该为整数");
+                return;
+            }
+
+            var defaultMarcSyntaxOID = $(divId).find("#_defaultMarcSyntaxOID").val();
+            //alert(defaultMarcSyntaxOID);
+
+            var defaultElementSetName = $(divId).find("#_defaultElementSetName").val();
+            //alert(defaultElementSetName);
+
+            var firstfull = getCheckboxValue("_firstfull");//$(divId).find("#_firstfull").val();
+            //alert(firstfull);
+
+            var detectmarcsyntax = getCheckboxValue("_detectmarcsyntax");//$(divId).find("#_detectmarcsyntax").val();
+            //alert(detectmarcsyntax);
+
+            var ignorereferenceid = getCheckboxValue("_ignorereferenceid");//$(divId).find("#_ignorereferenceid").val();
+            //alert(ignorereferenceid);
+
+            var isbn_force13 = getCheckboxValue("_isbn_force13");//$(divId).find("#_isbn_force13").val();
+            var isbn_force10 = getCheckboxValue("_isbn_force10");// $(divId).find("#_isbn_force10").val();
+            var isbn_addhyphen = getCheckboxValue("_isbn_addhyphen");//$(divId).find("#_isbn_addhyphen").val();
+            var isbn_removehyphen = getCheckboxValue("_isbn_removehyphen");// $(divId).find("#_isbn_removehyphen").val();
+            var isbn_wild = getCheckboxValue("_isbn_wild");// $(divId).find("#_isbn_wild").val();
+
+            var queryTermEncoding = $(divId).find("#_queryTermEncoding").val();
+            //alert("queryTermEncoding=" + queryTermEncoding);
+
+            var defaultEncoding = $(divId).find("#_defaultEncoding").val();
+            //alert("defaultEncoding=" + defaultEncoding);
+
+            //var recordSyntaxAndEncodingBinding = $(divId).find("#_recordSyntaxAndEncodingBinding").val();
+
+
+            var charNegoUtf8 = getCheckboxValue("_charNegoUtf8");// $(divId).find("#_charNegoUtf8").val();
+            var charNego_recordsInSeletedCharsets = getCheckboxValue("_charNego_recordsInSeletedCharsets");// $(divId).find("#_charNego_recordsInSeletedCharsets").val();
 
             var creatorPhone = $(divId).find("#_creatorPhone").val();
             if (creatorPhone == "") {
@@ -206,6 +459,23 @@
                 return;
             }
 
+            var bRet = checkPhone(creatorPhone);
+            //alert(bRet);
+            if (bRet == false) {
+                alert("输入的手机号不正确，请重新输入。");
+                return;
+            }
+            var verifyCode = $(divId).find("#_verifyCode").val();
+            if (verifyCode == null)
+                verifyCode = "";
+            //alert("verifyCode=" + verifyCode);
+            //if (verifyCode == "" || verifyCode==null) {
+            //    alert("请输入短信验证码。");
+            //    return;
+            //}
+
+
+            var subjects = "";  //这里以逗号分隔
 
             //显示等待图层
             showMaskLayer();
@@ -221,19 +491,22 @@
             var action = "";
             if (msgId == "new") {
                 action = "POST";
+                url += "?verifyCode=" + encodeURIComponent(verifyCode);  //url也加一截
             }
             else {
                 action = "PUT";
-                url += "/" + id;  //url也加一截
+                url += "/" + id + "?verifyCode=" + encodeURIComponent(verifyCode);  //url也加一截
             }
 
-            //alert(url);
+            //alert(recsperbatch);
+
+           // alert(url);
             sendAjaxRequest(url, action,
                 function (result) {
                     // 关闭等待层
                     hideMaskLayer();
 
-                    if (result.errorCode == -1) {
+                    if (result.errorCode <= -1) {
                         alert("操作失败：" + result.errorInfo);
                         return;
                     }
@@ -256,11 +529,35 @@
                 },
                 {
                     id: id,
-                    hostName: hostName,
+                    name: name,
+                    addr: addr,
                     port: port,
-                    dbNames: dbNames,
-                    authenticationMethod: authenticationMethod,
-                    creatorPhone: creatorPhone
+                    homepage: homepage,
+                    dbnames: dbnames,
+                    authmethod: authmethod,
+
+                    groupid: groupid,
+                    username: username,
+                    password: password,
+
+                    creatorPhone: creatorPhone,
+
+                    // 高级选项
+                    recsperbatch: recsperbatch,
+                    defaultMarcSyntaxOID: defaultMarcSyntaxOID,
+                    defaultElementSetName: defaultElementSetName,
+                    firstfull: firstfull,
+                    detectmarcsyntax: detectmarcsyntax,
+                    ignorereferenceid: ignorereferenceid,
+                    isbn_force13: isbn_force13,
+                    isbn_force10: isbn_force10,
+                    isbn_addhyphen: isbn_addhyphen,
+                    isbn_removehyphen: isbn_removehyphen,
+                    isbn_wild: isbn_wild,
+                    charNegoUtf8: charNegoUtf8,
+                    charNego_recordsInSeletedCharsets: charNego_recordsInSeletedCharsets,
+                    queryTermEncoding: queryTermEncoding,
+                    defaultEncoding: defaultEncoding
                 }
             );
 
@@ -296,6 +593,10 @@
 
             //alert("返回的item-" + msgItem.subject);
             $(divId).html(msgViewHtml);
+
+            // 加上card
+            //$(divId).addClass("card");
+
         }
 
         // 取消新增或者修改
@@ -327,7 +628,7 @@
             //显示态html
             var viewHtml = "";
 
-           
+
             //显示等待图层
             //var index = loadLayer();
             showLoading();
@@ -345,12 +646,15 @@
                     alert(result.errorInfo);
                     return;
                 }
-                if (result.data != null ) {
+                if (result.data != null) {
 
                     // 把数据填在编辑界面
                     var item = result.data;
                     var html = getMsgViewHtml(item, false);
                     $(divId).html(html);
+
+                    // 加上card
+                    // $(divId).addClass("card");
                 }
 
             }, function (xhq, textStatus, errorThrown) {
@@ -361,109 +665,345 @@
                 alert("访问服务器出错：\r\n" + errorThrown);
 
             });
-            
+
         }
 
-
-
         // 获取编辑态html
-        function getMsgEditHtml(msgItem) {
+        function getMsgEditHtml(item) {
 
             var saveBtnName = "新增";
             var msgId = "new"; //默认新建的情况
-            var hostName = "";
+            var name = "";
+            var addr = "";
             var port = "";
-            var dbNames = "";
-            var authenticationMethod = "";    // 权限验证方式
+            var dbnames = "";
+            var homepage = "";
+            var groupid = "";  // groud id
+            var username = "";   // 用户名
+            var password = "";  // 密码
 
-            //var groupID;  // groud id
-            //var userName;   // 用户名
-            //var password;  // 密码
 
             var creatorPhone = "";  //创建者手机号
-            var creatorIP = "";  //创建者ip 
+            var creatorIP = "";  //创建者ip
             var createTime = "";
 
             var state = ""; //状态，0 未审核，1审核通过，2审核不通过
             var verifier = ""; //审核人
             var verifyTime = ""; //审核时间
 
-            var idpassStr = "";
-            if (msgItem != null) {
-                //alert("取值");
-                msgId = msgItem.id;
-                hostName = msgItem.hostName;
-                //alert("hostName=" + hostName);
-                port = msgItem.port;
-                dbNames = msgItem.dbNames;
-                authenticationMethod = msgItem.authenticationMethod;
-                creatorPhone = msgItem.creatorPhone;
-                creatorIP = msgItem.creatorIP;
-                createTime = msgItem.createTime;
-                state = msgItem.state;
-                verifier = msgItem.verifier;
-                verifyTime = msgItem.verifyTime;
+            //权限验证方式
+            var authmethod_open_str = " checked ";    
+            var authmethod_idpassword_str = "";   
 
-                if (msgItem.authenticationMethod == "idpass")
+
+            // 高级选项
+            var recsperbatch = "20";
+
+            var defaultMarcSyntaxOID_UNIMARC = "";
+            var defaultMarcSyntaxOID_MARC21 = "";
+            var defaultMarcSyntaxOID_SUTRS = "";
+            var defaultMarcSyntaxOID_XML = "";
+
+            var defaultElementSetName_B = "";
+            var defaultElementSetName_F = "";
+            var defaultElementSetName_dc = "";
+            var defaultElementSetName_mods = "";
+            var defaultElementSetName_marcxml = "";
+            var defaultElementSetName_opacxml = "";
+
+            var queryTermEncoding_gb2312 = "";
+            var queryTermEncoding_utf8 = "";
+
+            var defaultEncoding_gb2312 = "";
+            var defaultEncoding_utf8 = "";
+            var defaultEncoding_MARC8 = "";
+
+
+            var firstfullCkdStr = "";
+            var detectmarcsyntaxStr = "";
+            var ignorereferenceidStr = "";
+
+            var isbn_force13Str = "";
+            var isbn_force10Str = "";
+            var isbn_addhyphenStr = "";
+            var isbn_removehyphenStr = "";
+            var isbn_wildStr = "";
+
+
+            var charNegoUtf8Str = "";
+            var charNego_recordsInSeletedCharsetsStr = "";
+
+
+            var idpassStr = "";
+            if (item != null) {
+                //alert("取值");
+                msgId = item.id;
+                name = item.name;
+                addr = item.addr;
+                port = item.port;
+                dbnames = item.dbnames;
+                homepage = item.homepage;
+
+                if (item.authmethod == 0) {
+                    authmethod_open_str = " checked ";
+                }
+                else {
+                    authmethod_idpassword_str = " checked ";
+                }
+
+
+                groupid = item.groupid;
+                username = item.username;
+                password = item.password;
+
+                creatorPhone = item.creatorPhone;
+                creatorIP = item.creatorIP;
+                createTime = item.createTime;
+                state = item.state;
+                verifier = item.verifier;
+                verifyTime = item.verifyTime;
+
+                if (item.authmethod == 1)
                     idpassStr = " selected ";
+
+
+                recsperbatch = item.recsperbatch;
+                var defaultMarcSyntaxOID = item.defaultMarcSyntaxOID;
+                //alert("~~" + defaultMarcSyntaxOID);
+
+                if (defaultMarcSyntaxOID == "UNIMARC")
+                    defaultMarcSyntaxOID_UNIMARC = " selected ";
+                else if (defaultMarcSyntaxOID == "MARC21")
+                    defaultMarcSyntaxOID_MARC21 = " selected ";
+                else if (defaultMarcSyntaxOID == "SUTRS")
+                    defaultMarcSyntaxOID_SUTRS = " selected ";
+                else if (defaultMarcSyntaxOID == "XML")
+                    defaultMarcSyntaxOID_XML = " selected ";
+
+                var defaultElementSetName = item.defaultElementSetName;
+                // alert(defaultElementSetName);
+                if (defaultElementSetName == "B")
+                    defaultElementSetName_B = " selected ";
+                else if (defaultElementSetName == "F")
+                    defaultElementSetName_F = " selected ";
+                else if (defaultElementSetName == "dc")
+                    defaultElementSetName_dc = " selected ";
+                else if (defaultElementSetName == "mods")
+                    defaultElementSetName_mods = " selected ";
+                else if (defaultElementSetName == "marcxml")
+                    defaultElementSetName_marcxml = " selected ";
+                else if (defaultElementSetName == "opacxml")
+                    defaultElementSetName_opacxml = " selected ";
+
+                //
+                var queryTermEncoding = item.queryTermEncoding;
+                if (queryTermEncoding == "gb2312")
+                    queryTermEncoding_gb2312 = " selected ";
+                else if (queryTermEncoding == "utf-8")
+                     queryTermEncoding_utf8 = " selected ";
+
+                //
+                var defaultEncoding = item.defaultEncoding;
+                if (defaultEncoding == "gb2312")
+                    defaultEncoding_gb2312 = " selected ";
+                else if (defaultEncoding == "utf-8")
+                    defaultEncoding_utf8 = " selected ";
+                else if (defaultEncoding == "MARC-8")
+                    defaultEncoding_MARC8 = " selected ";
+                //
+                 firstfullCkdStr = getCheckedStr(item.firstfull);
+                 detectmarcsyntaxStr = getCheckedStr(item.detectmarcsyntax);
+                ignorereferenceidStr = getCheckedStr(item.ignorereferenceid);
+
+                //isbn相关
+                 isbn_force13Str = getCheckedStr(item.isbn_force13);
+                 isbn_force10Str = getCheckedStr(item.isbn_force10);
+                 isbn_addhyphenStr = getCheckedStr(item.isbn_addhyphen);
+                 isbn_removehyphenStr = getCheckedStr(item.isbn_removehyphen);
+                isbn_wildStr = getCheckedStr(item.isbn_wild);
+
+
+                //
+                charNegoUtf8Str = getCheckedStr(item.charNegoUtf8);
+                charNego_recordsInSeletedCharsetsStr = getCheckedStr(item.charNego_recordsInSeletedCharsets);
 
                 saveBtnName = "保存";
             }
 
+            var h = "<div class='ui large form edit' style='background-color:#eeeeee;padding:5px;display:inline-block'>\
+            <div class='ui segment'>\
+                <div class='required  field '>\
+                    <label>服务器名称</label>\
+                    <input type='text' placeholder='name' id='_name' value='" + name + "'>\
+                </div>\
+                <div class='fields'>\
+                    <div class='required five wide field'>\
+                        <label>服务器地址</label>\
+                        <input type='text' placeholder='address' id='_addr'  value='" + addr + "'>\
+                    </div>\
+                    <div class='required two wide field'>\
+                        <label>端口</label>\
+                        <input type='text' placeholder='port' id='_port' value='" + port + "'>\
+                    </div>\
+                </div>\
+                <div class=' field'>\
+                    <label>主&nbsp;&nbsp;页</label>\
+                    <input type='text' placeholder='homepage' id='_homepage' value='" + homepage + "'>\
+                </div>\
+                <div class='required field'>\
+                    <label>数据库</label>\
+                    <input type='text' placeholder='database names' id='_dbnames' value='" + dbnames + "'>\
+                </div>\
+                <div class='inline fields'>\
+                    <label>权限验证方式</label>\
+                    <div class='field'>\
+                        <div class='ui radio checkbox'>\
+                            <input   name='_authmethod' type='radio' "+ authmethod_open_str+" value='0'>\
+                            <label>Open</label>\
+                        </div>\
+                    </div>\
+                    <div class='field'>\
+                        <div class='ui radio checkbox'>\
+                            <input name='_authmethod' type='radio' "+ authmethod_idpassword_str+" value='1'>\
+                            <label>ID/Password</label>\
+                        </div>\
+                    </div>\
+                </div>\
+                <div class='fields'>\
+                    <div class=' field'>\
+                        <label>Group ID</label>\
+                        <input type='text' placeholder='Group ID' id='_groupid' value='" + groupid + "'>\
+                    </div>\
+                    <div class=' field'>\
+                        <label>用户名</label>\
+                        <input type='text' placeholder='username' id='_username' value='" + username + "'>\
+                    </div>\
+                    <div class=' field'>\
+                        <label>密码</label>\
+                        <input type='text' placeholder='password' id='_password' value='" + password + "'>\
+                    </div>\
+                </div>\
+            </div>\
+            <div class='ui segment'>\
+                <div class='fields'>\
+                    <div class='required inline  field '>\
+                        <label>创建者手机号</label>\
+                        <input type='text' placeholder='phone' id='_creatorPhone' value='" + creatorPhone + "'>\
+                    </div>\
+                </div>\
+                <div class='required inline  field '>\
+                    <label>输入验证码&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                    <input type='text' id='_verifyCode'>\
+                </div>\
+            </div>\
+              <div onclick='expandToggle(this)'><span id='_advanceCtrl'>+</span> 高级选项<br/></div> \
+              <div id='_advance' style='display:none'>\
+                <div class='content'>\
+                    <div class='ui segment'>\
+                        <div class='inline field'>\
+                            <label>获取记录每批条数</label>\
+                            <input type='text' placeholder='' id='_recsperbatch'  value='" + recsperbatch + "'>\
+                        </div>\
+                        <div class='inline field'>\
+                            <label>缺省数据格式OID</label>\
+                            <select id='_defaultMarcSyntaxOID'>\
+                                <option value=''></option>\
+                                <option value='UNIMARC' "+ defaultMarcSyntaxOID_UNIMARC+">1.2.840.10003.5.1 -- UNIMARC</option>\
+                                <option value='MARC21' "+ defaultMarcSyntaxOID_MARC21+">1.2.840.10003.5.10 -- MARC21</option>\
+                                <option value='SUTRS' "+ defaultMarcSyntaxOID_SUTRS+">1.2.840.10003.5.101 -- SUTRS</option>\
+                                <option value='XML' "+ defaultMarcSyntaxOID_XML+">1.2.840.10003.5.109.10 -- XML</option>\
+                            </select>\
+                        </div>\
+                        <div class='inline field'>\
+                            <label>缺省元素集名</label>\
+                            <select id='_defaultElementSetName'>\
+                                <option value=''></option>\
+                                <option value='B' "+ defaultElementSetName_B+">B -- Brief(MARC records)</option>\
+                                <option value='F' "+ defaultElementSetName_F +">F -- Full (MARC and OPAC records)</option>\
+                                <option value='dc' "+ defaultElementSetName_dc +">dc --  Dublin Core (XML records)</option>\
+                                <option value='mods' "+ defaultElementSetName_mods +">mods  -- MODS (XML records)</option>\
+                                <option value='marcxml' "+ defaultElementSetName_marcxml +">marcxml -- MARCXML (XML records), default schema for XML</option>\
+                                <option value='opacxml' "+ defaultElementSetName_opacxml +">opacxml -- MARCXML with holdings attached</option>\
+                            </select>\
+                        </div>\
+                        <div class='ui   toggle checkbox  field'>\
+                            <input type='checkbox' id='_firstfull' "+ firstfullCkdStr+">\
+                            <label>在获取浏览记录阶段即获取全记录</label>\
+                        </div>\
+                        <br />\
+                        <div class='ui toggle checkbox  field'>\
+                            <input type='checkbox' id='_detectmarcsyntax' "+ detectmarcsyntaxStr+">\
+                            <label>自动探测MARC记录格式</label>\
+                        </div>\
+                        <br />\
+                        <div class='ui toggle checkbox  field'>\
+                            <input type='checkbox' id='_ignorereferenceid' "+ ignorereferenceidStr+">\
+                            <label>不检查Reference</label>\
+                        </div>\
+                    </div>\
+                    <div class='ui segment'>\
+                        <p>ISBN检索前，对检索词作如下预处理：</p>\
+                        <div class='ui  checkbox field'>\
+                            <input type='checkbox' id='_isbn_force13' "+ isbn_force13Str+">\
+                            <label>规整为13位形态&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                        </div>\
+                        <div class='ui  checkbox field'>\
+                            <input type='checkbox' id='_isbn_force10' "+ isbn_force10Str+">\
+                            <label>规整为10位形态&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                        </div>\
+                        <div class='ui  checkbox field'>\
+                            <input type='checkbox' id='_isbn_addhyphen' "+ isbn_addhyphenStr+">\
+                            <label>加入横杠&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                        </div>\
+                        <div class='ui  checkbox field'>\
+                            <input type='checkbox' id='_isbn_removehyphen' "+ isbn_removehyphenStr+">\
+                            <label>去除横杠&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                        </div>\
+                        <div class='ui  checkbox field'>\
+                            <input type='checkbox' id='_isbn_wild' "+ isbn_wildStr+">\
+                            <label>野蛮匹配&nbsp;&nbsp;&nbsp;&nbsp;</label>\
+                        </div>\
+                    </div>\
+                    <div class='ui segment'>\
+                        <div class='inline field'>\
+                            <label>检索词缺省编码方式</label>\
+                            <select id='_queryTermEncoding'>\
+                                <option value=''></option>\
+                                <option value='gb2312' "+ queryTermEncoding_gb2312+">gb2312</option>\
+                                <option value='utf-8' "+ queryTermEncoding_utf8+">utf-8</option>\
+                            </select>\
+                        </div>\
+                        <div class='inline field'>\
+                            <label>数据记录缺省编码方式</label>\
+                            <select id='_defaultEncoding'>\
+                                <option value=''></option>\
+                                <option value='gb2312' "+ defaultEncoding_gb2312 +">gb2312</option>\
+                                <option value='utf-8' "+ defaultEncoding_utf8 + ">utf-8</option>\
+                                <option value='MARC-8' "+ defaultEncoding_MARC8 +">MARC-8</option>\
+                            </select>\
+                        </div>\
+                        <div class='ui   toggle checkbox  field'>\
+                            <input type='checkbox' id='_charNegoUtf8' "+ charNegoUtf8Str+">\
+                            <label>启用字符集协商功能，优先为检索词选用UTF-8编码方式</label>\
+                        </div>\
+                        <br />\
+                        <div class='ui toggle checkbox  field'>\
+                            <input name='public' type='checkbox' id='_charNego_recordsInSeletedCharsets' "+ charNego_recordsInSeletedCharsetsStr+">\
+                            <label>若启用了字符集协商功能，令数据记录也一同采用UTF-8编码试</label>\
+                        </div>\
+                    </div>\
+                </div>\
+                </div>\
+            <br />\
+            <div class='ui  button' onclick=\"save('" + msgId + "')\">" + saveBtnName + "</div>\
+            <div class='ui  button' onclick=\"cancelEdit('" + msgId + "')\">取消</div>\
+</div>";
 
 
-            //alert("getMsgEditHtml 1");
-
-            var html = "<table class='edit'>"
 
 
-            html += "<tr>"
-                + "<td class='label'>服务器地址</td>"
-                + "<td class='value'>"
-                + "<input class='' id='_hostName' type='text' value='" + hostName + "'>"
-                + "</td>"
-                + "</tr>"
 
-                + "<tr>"
-                + "<td class='label'>端口</td>"
-                + "<td class='value'>"
-                + "<input class='' id='_port' type='text' value='" + port + "'>"
-                + "</td>"
-                + "</tr>"
-
-                + "<tr>"
-                + "<td class='label'>数据库</td>"
-                + "<td class='value'>"
-                + "<input class='' id='_dbNames' type='text' value='" + dbNames + "'>"
-                + "</td>"
-                + "</tr>"
-
-                + "<tr>"
-                + "<td class='label'>权限验证方式</td>"
-                + "<td class='value'>"
-                + "<select id = '_authenticationMethod'  >  "
-                + "    <option value='open'>Open</option>"
-                + "    <option value='idpass' " + idpassStr+">ID/Pass</option>"
-                + "</select >"
-                + "</td>"
-                + "</tr>"
-
-                + "<tr>"
-                + "<td class='label'>创建者手机号</td>"
-                + "<td class='value'>"
-                + "<input class='' id='_creatorPhone' type='text' value='" + creatorPhone + "'>"
-                + "</td>"
-                + "</tr>"
-
-            html += "<tr>"
-                + "<td colspan='2'>"
-                + "<button class='mui-btn mui-btn-primary' onclick=\"save('" + msgId + "')\">" + saveBtnName + "</button>&nbsp;&nbsp;"
-                + "<button class='mui-btn mui-btn-default' onclick=\"cancelEdit('" + msgId + "')\">取消</button>"
-                + "</td>"
-                + "</tr>"
-                + "</table>";
-
-            return html;
+            return h;
         }
 
         // 进入编辑态
@@ -509,9 +1049,12 @@
                 //alert("new");
                 //创建按钮不可见
                 $("#btnCreate").css('display', 'none');
-                $(divId).css('display', 'inline-block');
+                $(divId).css('display', 'block');
                 var html = getMsgEditHtml(null);
                 $(divId).html(html);
+
+
+
                 return;
             }
             //根据id从服务器上取记录
@@ -527,7 +1070,7 @@
                 // 关闭等待层
                 hideLoading();
 
-               // alert("gotoEdit 2\n"+url);
+                // alert("gotoEdit 2\n"+url);
 
 
                 //alert("回来-"+result.errorCode);
@@ -538,7 +1081,7 @@
                 //alert("gotoEdit 3");
 
                 // 把返回的数组加到观察数组
-                if (result.data != null ) {
+                if (result.data != null) {
 
                     //alert("gotoEdit 4");
 
@@ -550,6 +1093,7 @@
                     var html = getMsgEditHtml(item);
                     $(divId).html(html);
 
+                    //$(divId).removeClass("card");
                     //alert(html);
                     //alert("gotoEdit 5");
 
@@ -564,7 +1108,7 @@
 
                 alert("访问服务器出错：\r\n" + errorThrown);
 
-                });
+            });
 
 
         }
@@ -672,19 +1216,85 @@
             });
 
         }
+
+
+        //获取所有站点
+        function getVerifyCodeSMS() {
+            //显示等待图层
+            showLoading();
+
+            //alert("getAllZSerItem");
+
+            // 调web api，获取全部，todo可以改为分批获取
+            var url = "/api/ZSerItem?phone=" + "13862157150";
+            sendAjaxRequest(url, "GET", function (result) {
+
+                if (result.errorCode == -1) {
+                    alert(result.errorInfo);
+                    return;
+                }
+
+                alert("ok");
+
+                // 可以返回，以例界面上比较
+
+
+                // 关闭等待层
+                hideLoading();
+
+            }, function (xhq, textStatus, errorThrown) {
+                // 关闭等待层
+                hideLoading();
+
+                alert(errorThrown);
+            });
+        }
     </script>
 }
 
+
+<span id="_start" style="display:none;">@ViewBag.weixinId</span>
+
+
 <div id="divNew">
-    <div id='_edit_new' class="mui-card message" style="display:none"></div>
-    <div class="mui-content-padded">
-        <button id="btnCreate" class="mui-btn mui-btn-block mui-btn-primary" onclick="gotoEdit('new')">
+    <div id='_edit_new' class=" " style="display:none"></div>
+    <div>
+        <button id="btnCreate" class="ui button" onclick="gotoEdit('new')">
             新增站点
         </button>
     </div>
 </div>
 
+<br />
+
+<div class=''>
+
+    <select id="_from" class="ui dropdown">
+        <option value="id">id</option>
+        <option value="name">站点名称</option>
+        <option value="addr">站点地址</option>
+        <option value="createPhone">手机号</option>
+    </select>
+
+    <div class="ui icon input">
+        <input id="_word" type="text" placeholder="Search...">
+
+    </div>
+
+    <button id="btnSearch" class="ui button" onclick="search(true)">
+        检索
+    </button>
+</div>
+
 <div id="divResult">
     <div id="ulResult"></div>
-    <div id="_subject_main" />
+    <div id="_subject_main"  />
+
 </div>
+
+<div>
+    <div id="_more1" onclick="search()">点击加载更多...</div>
+    
+</div>
+
+
